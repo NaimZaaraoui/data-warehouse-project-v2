@@ -5,6 +5,9 @@ Expected location: <project-root>/scripts/bronze/load_bronze.py
 Expected folders: <project-root>/datasets/source_crm and source_erp
 All six tables are refreshed in one transaction. If a load fails, the batch
 rolls back and the previous Bronze data remains intact.
+
+Command-line usage:
+    python scripts/bronze/load_bronze.py
 """
 from __future__ import annotations
 
@@ -116,6 +119,7 @@ def run_pipeline() -> int:
         # psycopg commits when this connection context exits successfully;
         # an exception causes the transaction to roll back.
         with psycopg.connect(**settings) as conn:
+            logger.info("Truncating all Bronze tables before loading new data...")
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -130,6 +134,7 @@ def run_pipeline() -> int:
                 )
 
             for job in INGESTION_JOBS:
+                logger.info("Processing ingestion job for %s", job["table"])
                 schema_name, table_name = job["table"]
                 current_table = f"{schema_name}.{table_name}"
                 csv_path = Path(job["file"])
