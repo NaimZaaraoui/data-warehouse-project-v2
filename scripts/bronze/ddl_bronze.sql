@@ -26,7 +26,7 @@ DROP TABLE IF EXISTS bronze.crm_prd_info;
 CREATE TABLE bronze.crm_prd_info (
     prd_id INT,
     prd_key VARCHAR(50),
-    prd_name VARCHAR(100),
+    prd_nm VARCHAR(100),
     prd_cost INT,
     prd_line VARCHAR(50),
     prd_start_dt TIMESTAMP,

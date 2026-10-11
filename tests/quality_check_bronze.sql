@@ -1,6 +1,57 @@
--- Check wheter the Bronze tables have been loaded with data. 
--- This test is intended to be run after the Bronze load process has completed.
--- Row count validation
+/*
+ ================================================================================
+ Quality Check: Bronze Layer
+ Project: AdventureWorks Cycles Data Warehouse
+ Database: PostgreSQL
+ ================================================================================
+ 
+ PURPOSE
+ -------
+ Validate the contents of the Bronze layer after the ingestion process.
+ 
+ The Bronze layer preserves source data as loaded. These checks identify
+ potential data quality issues; they do not clean, update, or delete records.
+ 
+ SECTIONS
+ --------
+ 1. Row count validation.
+ 2. Schema and column validation.
+ 3. Data completeness.
+ 4. Null or duplicate primary keys.
+ 5. Unwanted spaces in string fields.
+ 6. Data standardization and consistency.
+ 7. Invalid date ranges and ships.
+ 8. Data consistency between related fields.
+ 
+ 
+ 
+ HOW TO USE
+ ----------
+ - Run after completing the Bronze load process.
+ - Review the results of each query.
+ - Queries labelled "EXPECTATION: No Results" should ideally return no rows.
+ - Investigate unexpected results before defining Silver transformations.
+ - A detected issue does not automatically mean a source record is invalid.
+ Confirm the business rules before deciding how to handle it.
+ 
+ ================================================================================
+ */
+/*
+ ================================================================================
+ 1. ROW COUNT VALIDATION
+ ================================================================================
+ 
+ PURPOSE:
+ Confirm that all six Bronze tables contain the expected number of records.
+ 
+ EXPECTATION:
+ Each table's row count should match the number of data records in its source
+ file, excluding the CSV header, assuming a full load.
+ 
+ NOTE:
+ This query reports the counts. Compare them with the source files or ingestion
+ logs to confirm that the load was complete.
+ */
 SELECT 'bronze.crm_cust_info' AS table_name,
     COUNT(*) AS row_count
 FROM bronze.crm_cust_info
@@ -26,11 +77,28 @@ SELECT 'bronze.erp_px_cat_g1v2',
 FROM bronze.erp_px_cat_g1v2
 ORDER BY table_name;
 
--- Schema and column validation
+/*
+ ================================================================================
+ 2. SCHEMA AND COLUMN VALIDATION
+ ================================================================================
+ 
+ PURPOSE:
+ Inspect the columns and data types defined in the Bronze schema.
+ 
+ EXPECTATION:
+ Tables should contain the expected columns, in the expected order, with
+ appropriate data types.
+ 
+ NOTE:
+ The query below displays the current schema. Compare it with your intended
+ table definitions and source-to-target column mappings.
+ */
+-- Inspect sample records from a Bronze table.
 SELECT *
 FROM bronze.crm_cust_info
 LIMIT 5;
 
+-- Inspect the columns and data types of all Bronze tables.
 SELECT table_name,
     ordinal_position,
     column_name,
@@ -40,7 +108,29 @@ WHERE table_schema = 'bronze'
 ORDER BY table_name,
     ordinal_position;
 
--- Data completeness
+/*
+ ================================================================================
+ 3. DATA COMPLETENESS
+ ================================================================================
+ 
+ PURPOSE:
+ Count NULL values in important columns.
+ 
+ EXPECTATION:
+ Required identifiers and measures should be present where the business rules
+ require them. Missing descriptive fields may be acceptable.
+ 
+ NOTE:
+ These queries measure completeness; they do not decide whether a NULL value
+ is acceptable.
+ */
+-- ----------------------------------------------------------------------------
+-- 3.1 CRM CUSTOMER INFORMATION
+-- ----------------------------------------------------------------------------
+SELECT *
+FROM bronze.crm_cust_info
+LIMIT 100;
+
 SELECT COUNT(*) AS total_rows,
     COUNT(*) FILTER (
         WHERE cst_id IS NULL
@@ -65,9 +155,12 @@ SELECT COUNT(*) AS total_rows,
     ) AS missing_create_date
 FROM bronze.crm_cust_info;
 
+-- ----------------------------------------------------------------------------
+-- 3.2 CRM PRODUCT INFORMATION
+-- ----------------------------------------------------------------------------
 SELECT *
-FROM bronze.crm_cust_info
-WHERE cst_lastname IS NULL;
+FROM bronze.crm_prd_info
+LIMIT 100;
 
 SELECT COUNT(*) AS total_rows,
     COUNT(*) FILTER (
@@ -77,8 +170,8 @@ SELECT COUNT(*) AS total_rows,
         WHERE prd_key IS NULL
     ) AS missing_prd_key,
     COUNT(*) FILTER (
-        WHERE prd_name IS NULL
-    ) AS missing_prd_name,
+        WHERE prd_nm IS NULL
+    ) AS missing_prd_nm,
     COUNT(*) FILTER (
         WHERE prd_cost IS NULL
     ) AS missing_prd_cost,
@@ -87,5 +180,588 @@ SELECT COUNT(*) AS total_rows,
     ) AS missing_prd_line,
     COUNT(*) FILTER (
         WHERE prd_start_dt IS NULL
-    ) AS missing_prd_start_dt
+    ) AS missing_prd_start_dt,
+    COUNT(*) FILTER (
+        WHERE prd_end_dt IS NULL
+    ) AS missing_prd_end_dt
 FROM bronze.crm_prd_info;
+
+-- ----------------------------------------------------------------------------
+-- 3.3 CRM SALES DETAILS
+-- ----------------------------------------------------------------------------
+SELECT *
+FROM bronze.crm_sales_details
+LIMIT 100;
+
+SELECT COUNT(*) AS total_rows,
+    COUNT(*) FILTER (
+        WHERE sls_ord_num IS NULL
+    ) AS missing_order_num,
+    COUNT(*) FILTER (
+        WHERE sls_prd_key IS NULL
+    ) AS missing_product_key,
+    COUNT(*) FILTER (
+        WHERE sls_cust_id IS NULL
+    ) AS missing_customer_id,
+    COUNT(*) FILTER (
+        WHERE sls_order_dt IS NULL
+    ) AS missing_order_date,
+    COUNT(*) FILTER (
+        WHERE sls_ship_dt IS NULL
+    ) AS missing_ship_date,
+    COUNT(*) FILTER (
+        WHERE sls_due_dt IS NULL
+    ) AS missing_due_date,
+    COUNT(*) FILTER (
+        WHERE sls_sales IS NULL
+    ) AS missing_sales,
+    COUNT(*) FILTER (
+        WHERE sls_quantity IS NULL
+    ) AS missing_quantity,
+    COUNT(*) FILTER (
+        WHERE sls_price IS NULL
+    ) AS missing_price
+FROM bronze.crm_sales_details;
+
+-- ----------------------------------------------------------------------------
+-- 3.4 ERP CUSTOMER DEMOGRAPHICS
+-- ----------------------------------------------------------------------------
+SELECT *
+FROM bronze.erp_cust_az12
+LIMIT 100;
+
+SELECT COUNT(*) AS total_rows,
+    COUNT(*) FILTER (
+        WHERE CID IS NULL
+    ) AS missing_customer_id,
+    COUNT(*) FILTER (
+        WHERE BDATE IS NULL
+    ) AS missing_birth_date,
+    COUNT(*) FILTER (
+        WHERE GEN IS NULL
+    ) AS missing_gender
+FROM bronze.erp_cust_az12;
+
+-- ----------------------------------------------------------------------------
+-- 3.5 ERP CUSTOMER LOCATIONS
+-- ----------------------------------------------------------------------------
+SELECT *
+FROM bronze.erp_loc_a101
+LIMIT 100;
+
+SELECT COUNT(*) AS total_rows,
+    COUNT(*) FILTER (
+        WHERE CID IS NULL
+    ) AS missing_customer_id,
+    COUNT(*) FILTER (
+        WHERE CNTRY IS NULL
+    ) AS missing_country
+FROM bronze.erp_loc_a101;
+
+-- ----------------------------------------------------------------------------
+-- 3.6 ERP PRODUCT CATEGORIES
+-- ----------------------------------------------------------------------------
+SELECT *
+FROM bronze.erp_px_cat_g1v2
+LIMIT 100;
+
+SELECT COUNT(*) AS total_rows,
+    COUNT(*) FILTER (
+        WHERE ID IS NULL
+    ) AS missing_product_id,
+    COUNT(*) FILTER (
+        WHERE CAT IS NULL
+    ) AS missing_category,
+    COUNT(*) FILTER (
+        WHERE SUBCAT IS NULL
+    ) AS missing_subcategory,
+    COUNT(*) FILTER (
+        WHERE MAINTENANCE IS NULL
+    ) AS missing_maintenance
+FROM bronze.erp_px_cat_g1v2;
+
+/*
+ ================================================================================
+ 4. CUSTOMER DATA INTEGRITY
+ ================================================================================
+ 
+ TABLE:
+ bronze.crm_cust_info
+ 
+ PURPOSE:
+ Investigate uniqueness, whitespace, standardization, and missing customer data.
+ */
+-- ----------------------------------------------------------------------------
+-- 4.1 CHECK FOR NULL OR DUPLICATE CUSTOMER IDS
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results
+-- cst_id is expected to identify a customer uniquely.
+-- Multiple NULL IDs and repeated IDs are reported by this query.
+SELECT cst_id,
+    COUNT(*) AS row_count
+FROM bronze.crm_cust_info
+GROUP BY cst_id
+HAVING cst_id IS NULL
+    OR COUNT(*) > 1
+ORDER BY cst_id NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 4.2 INVESTIGATE NULL AND DUPLICATE CUSTOMER IDS
+-- ----------------------------------------------------------------------------
+-- Inspect records with missing IDs or IDs already identified as duplicates.
+-- Update the example IDs below if new duplicate IDs are discovered.
+SELECT *
+FROM bronze.crm_cust_info
+WHERE cst_id IS NULL
+    OR cst_id IN (29473, 29449, 29433)
+ORDER BY cst_id NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 4.3 CHECK FOR UNWANTED SPACES IN CUSTOMER TEXT FIELDS
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results
+-- TRIM removes leading and trailing spaces.
+-- NULL values are handled by the separate completeness checks.
+SELECT cst_firstname,
+    LENGTH(cst_firstname) AS original_length,
+    LENGTH(TRIM(cst_firstname)) AS trimmed_length
+FROM bronze.crm_cust_info
+WHERE cst_firstname IS NOT NULL
+    AND cst_firstname <> TRIM(cst_firstname);
+
+SELECT cst_lastname,
+    LENGTH(cst_lastname) AS original_length,
+    LENGTH(TRIM(cst_lastname)) AS trimmed_length
+FROM bronze.crm_cust_info
+WHERE cst_lastname IS NOT NULL
+    AND cst_lastname <> TRIM(cst_lastname);
+
+-- ----------------------------------------------------------------------------
+-- 4.4 CHECK DISTINCT GENDER VALUES
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: Values should follow consistent source conventions.
+-- Review the values before deciding how to standardize them in Silver.
+SELECT DISTINCT cst_gndr
+FROM bronze.crm_cust_info
+ORDER BY cst_gndr NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 4.5 CHECK DISTINCT MARITAL STATUS VALUES
+-- ----------------------------------------------------------------------------
+SELECT DISTINCT cst_marital_status
+FROM bronze.crm_cust_info
+ORDER BY cst_marital_status NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 4.6 INVESTIGATE INCOMPLETE CUSTOMER RECORDS
+-- ----------------------------------------------------------------------------
+-- This query returns records with at least one missing field.
+-- It can return many rows when a field such as gender is frequently NULL.
+SELECT *
+FROM bronze.crm_cust_info
+WHERE cst_id IS NULL
+    OR cst_key IS NULL
+    OR cst_firstname IS NULL
+    OR cst_lastname IS NULL
+    OR cst_marital_status IS NULL
+    OR cst_gndr IS NULL
+    OR cst_create_date IS NULL
+ORDER BY cst_id NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 4.7 INVESTIGATE MISSING GENDER BY CUSTOMER ID GROUP
+-- ----------------------------------------------------------------------------
+-- Exploratory check based on the pattern observed in the data.
+-- The 11160 boundary is for investigation, not a business rule.
+SELECT CASE
+        WHEN cst_id IS NULL THEN 'Missing customer ID'
+        WHEN cst_id < 11160 THEN 'Before 11160'
+        ELSE '11160 and above'
+    END AS customer_group,
+    COUNT(*) AS total_rows,
+    COUNT(*) FILTER (
+        WHERE cst_gndr IS NULL
+    ) AS missing_gender
+FROM bronze.crm_cust_info
+GROUP BY 1
+ORDER BY 1;
+
+SELECT *
+FROM bronze.crm_cust_info
+WHERE cst_id > 11160
+    AND cst_gndr IS NULL;
+
+/*
+ ================================================================================
+ 5. PRODUCT DATA INTEGRITY
+ ================================================================================
+ 
+ TABLE:
+ bronze.crm_prd_info
+ 
+ PURPOSE:
+ Check product ID uniqueness, text formatting, product line values, date ranges,
+ and previously identified missing fields.
+ */
+-- ----------------------------------------------------------------------------
+-- 5.1 CHECK FOR NULL OR DUPLICATE PRODUCT IDS
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results
+-- Assumes prd_id is intended to uniquely identify a product record.
+SELECT prd_id,
+    COUNT(*) AS row_count
+FROM bronze.crm_prd_info
+GROUP BY prd_id
+HAVING prd_id IS NULL
+    OR COUNT(*) > 1
+ORDER BY prd_id NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 5.2 CHECK FOR UNWANTED SPACES IN PRODUCT NAMES
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results
+SELECT prd_nm,
+    LENGTH(prd_nm) AS original_length,
+    LENGTH(TRIM(prd_nm)) AS trimmed_length
+FROM bronze.crm_prd_info
+WHERE prd_nm IS NOT NULL
+    AND prd_nm <> TRIM(prd_nm);
+
+-- ----------------------------------------------------------------------------
+-- 5.3 REVIEW DISTINCT PRODUCT LINE VALUES
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: Values should follow consistent source conventions.
+SELECT DISTINCT prd_line
+FROM bronze.crm_prd_info
+ORDER BY prd_line NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 5.4 CHECK FOR INVALID PRODUCT DATE RANGES
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results
+-- This comparison assumes the two columns use comparable date-compatible types.
+-- A missing end date is not flagged because it may be valid for an active product.
+SELECT *
+FROM bronze.crm_prd_info
+WHERE prd_start_dt IS NOT NULL
+    AND prd_end_dt IS NOT NULL
+    AND prd_end_dt < prd_start_dt;
+
+-- ----------------------------------------------------------------------------
+-- 5.5 INVESTIGATE MISSING PRODUCT COSTS OR PRODUCT LINES
+-- ----------------------------------------------------------------------------
+SELECT *
+FROM bronze.crm_prd_info
+WHERE prd_cost IS NULL
+    OR prd_line IS NULL;
+
+-- ----------------------------------------------------------------------------
+-- 5.6 INVESTIGATE NEGATIVE PRODUCT COSTS
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results
+SELECT *
+FROM bronze.crm_prd_info
+WHERE prd_cost < 0;
+
+/*
+ ================================================================================
+ 6. SALES DATA INTEGRITY
+ ================================================================================
+ 
+ TABLE:
+ bronze.crm_sales_details
+ 
+ PURPOSE:
+ Investigate missing identifiers and measures, potential invalid numeric values,
+ date inconsistencies, and relationships to CRM customer and product records.
+ 
+ IMPORTANT:
+ An order number may appear multiple times because an order can contain multiple
+ products. Do not assume sls_ord_num alone must be unique.
+ */
+-- ----------------------------------------------------------------------------
+-- 6.1 INVESTIGATE INCOMPLETE SALES RECORDS
+-- ----------------------------------------------------------------------------
+SELECT *
+FROM bronze.crm_sales_details
+WHERE sls_ord_num IS NULL
+    OR sls_prd_key IS NULL
+    OR sls_cust_id IS NULL
+    OR sls_order_dt IS NULL
+    OR sls_sales IS NULL
+    OR sls_quantity IS NULL
+    OR sls_price IS NULL;
+
+-- ----------------------------------------------------------------------------
+-- 6.2 CHECK FOR NEGATIVE SALES, QUANTITIES, OR PRICES
+-- ----------------------------------------------------------------------------
+-- INVESTIGATION QUERY:
+-- Negative values may indicate data issues, but returns or adjustments may also
+-- explain them. Confirm the business rules before classifying them as invalid.
+SELECT *
+FROM bronze.crm_sales_details
+WHERE sls_sales < 0
+    OR sls_quantity < 0
+    OR sls_price < 0;
+
+-- ----------------------------------------------------------------------------
+-- 6.3 CHECK FOR ZERO SALES, QUANTITIES, OR PRICES
+-- ----------------------------------------------------------------------------
+-- INVESTIGATION QUERY:
+-- Zero values are not automatically invalid; inspect them in context.
+SELECT *
+FROM bronze.crm_sales_details
+WHERE sls_sales = 0
+    OR sls_quantity = 0
+    OR sls_price = 0;
+
+-- ----------------------------------------------------------------------------
+-- 6.4 CHECK SALES DATE CHRONOLOGY
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No unexpected date ordering.
+-- Assumes the date columns use comparable date-compatible types.
+-- Confirm the source's date rules before treating every result as invalid.
+SELECT *
+FROM bronze.crm_sales_details
+WHERE (
+        sls_order_dt IS NOT NULL
+        AND sls_ship_dt IS NOT NULL
+        AND sls_ship_dt < sls_order_dt
+    )
+    OR (
+        sls_order_dt IS NOT NULL
+        AND sls_due_dt IS NOT NULL
+        AND sls_due_dt < sls_order_dt
+    );
+
+-- ----------------------------------------------------------------------------
+-- 6.5 CHECK WHETHER SALES EQUAL QUANTITY MULTIPLIED BY PRICE
+-- ----------------------------------------------------------------------------
+-- INVESTIGATION QUERY:
+-- This is a potential consistency check, not a guaranteed business rule.
+-- Discounts, rounding, or other pricing rules may explain differences.
+-- Exact comparison may be inappropriate if numeric rounding is expected.
+SELECT sls_ord_num,
+    sls_prd_key,
+    sls_quantity,
+    sls_price,
+    sls_sales,
+    sls_quantity * sls_price AS calculated_sales
+FROM bronze.crm_sales_details
+WHERE sls_quantity IS NOT NULL
+    AND sls_price IS NOT NULL
+    AND sls_sales IS NOT NULL
+    AND sls_sales <> sls_quantity * sls_price;
+
+-- ----------------------------------------------------------------------------
+-- 6.6 CHECK FOR SALES WITH NO MATCHING CRM CUSTOMER
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results, if the source systems are expected to be consistent.
+-- Investigate any unmatched IDs; do not delete these records in Bronze.
+SELECT s.sls_cust_id,
+    COUNT(*) AS sales_rows
+FROM bronze.crm_sales_details AS s
+WHERE s.sls_cust_id IS NOT NULL
+    AND NOT EXISTS (
+        SELECT 1
+        FROM bronze.crm_cust_info AS c
+        WHERE c.cst_id = s.sls_cust_id
+    )
+GROUP BY s.sls_cust_id
+ORDER BY s.sls_cust_id;
+
+-- ----------------------------------------------------------------------------
+-- 6.7 CHECK FOR SALES WITH NO MATCHING CRM PRODUCT KEY
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results, if product keys are expected to match across tables.
+-- Confirm the source key conventions before interpreting unmatched values.
+SELECT s.sls_prd_key,
+    COUNT(*) AS sales_rows
+FROM bronze.crm_sales_details AS s
+WHERE s.sls_prd_key IS NOT NULL
+    AND NOT EXISTS (
+        SELECT 1
+        FROM bronze.crm_prd_info AS p
+        WHERE p.prd_key = s.sls_prd_key
+    )
+GROUP BY s.sls_prd_key
+ORDER BY s.sls_prd_key;
+
+/*
+ ================================================================================
+ 7. ERP CUSTOMER DEMOGRAPHICS INTEGRITY
+ ================================================================================
+ 
+ TABLE:
+ bronze.erp_cust_az12
+ 
+ PURPOSE:
+ Inspect customer identifier uniqueness, gender values, and birth dates.
+ */
+-- ----------------------------------------------------------------------------
+-- 7.1 CHECK FOR NULL OR DUPLICATE ERP CUSTOMER IDS
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results, if CID is expected to be unique in this source.
+SELECT "CID",
+    COUNT(*) AS row_count
+FROM bronze.erp_cust_az12
+GROUP BY "CID"
+HAVING "CID" IS NULL
+    OR COUNT(*) > 1
+ORDER BY "CID" NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 7.2 REVIEW DISTINCT ERP GENDER VALUES
+-- ----------------------------------------------------------------------------
+SELECT DISTINCT "GEN"
+FROM bronze.erp_cust_az12
+ORDER BY "GEN" NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 7.3 INVESTIGATE MISSING ERP GENDER VALUES
+-- ----------------------------------------------------------------------------
+SELECT *
+FROM bronze.erp_cust_az12
+WHERE "GEN" IS NULL;
+
+-- ----------------------------------------------------------------------------
+-- 7.4 CHECK FOR FUTURE BIRTH DATES
+-- ----------------------------------------------------------------------------
+-- INVESTIGATION QUERY:
+-- Uses the database's current date.
+-- Review any results and confirm the expected date rules before acting.
+SELECT *
+FROM bronze.erp_cust_az12
+WHERE "BDATE" > CURRENT_DATE;
+
+/*
+ ================================================================================
+ 8. ERP CUSTOMER LOCATION INTEGRITY
+ ================================================================================
+ 
+ TABLE:
+ bronze.erp_loc_a101
+ 
+ PURPOSE:
+ Inspect customer identifier uniqueness, country values, and missing countries.
+ */
+-- ----------------------------------------------------------------------------
+-- 8.1 CHECK FOR NULL OR DUPLICATE ERP LOCATION CUSTOMER IDS
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results, if each customer should have one location record.
+SELECT "CID",
+    COUNT(*) AS row_count
+FROM bronze.erp_loc_a101
+GROUP BY "CID"
+HAVING "CID" IS NULL
+    OR COUNT(*) > 1
+ORDER BY "CID" NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 8.2 REVIEW DISTINCT COUNTRY VALUES
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: Country values should follow consistent source conventions.
+-- Review abbreviations, spelling, whitespace, and NULL values.
+SELECT DISTINCT "CNTRY"
+FROM bronze.erp_loc_a101
+ORDER BY "CNTRY" NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 8.3 INVESTIGATE MISSING COUNTRY VALUES
+-- ----------------------------------------------------------------------------
+SELECT *
+FROM bronze.erp_loc_a101
+WHERE "CNTRY" IS NULL;
+
+-- ----------------------------------------------------------------------------
+-- 8.4 CHECK FOR UNWANTED SPACES IN COUNTRY VALUES
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results
+SELECT "CNTRY",
+    LENGTH("CNTRY") AS original_length,
+    LENGTH(TRIM("CNTRY")) AS trimmed_length
+FROM bronze.erp_loc_a101
+WHERE "CNTRY" IS NOT NULL
+    AND "CNTRY" <> TRIM("CNTRY");
+
+/*
+ ================================================================================
+ 9. ERP PRODUCT CATEGORY INTEGRITY
+ ================================================================================
+ 
+ TABLE:
+ bronze.erp_px_cat_g1v2
+ 
+ PURPOSE:
+ Inspect product category identifiers, uniqueness, and descriptive values.
+ */
+-- ----------------------------------------------------------------------------
+-- 9.1 CHECK FOR NULL OR DUPLICATE CATEGORY PRODUCT IDS
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results, if ID is expected to uniquely identify a record.
+SELECT "ID",
+    COUNT(*) AS row_count
+FROM bronze.erp_px_cat_g1v2
+GROUP BY "ID"
+HAVING "ID" IS NULL
+    OR COUNT(*) > 1
+ORDER BY "ID" NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 9.2 REVIEW DISTINCT CATEGORY VALUES
+-- ----------------------------------------------------------------------------
+SELECT DISTINCT "CAT"
+FROM bronze.erp_px_cat_g1v2
+ORDER BY "CAT" NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 9.3 REVIEW DISTINCT SUBCATEGORY VALUES
+-- ----------------------------------------------------------------------------
+SELECT DISTINCT "SUBCAT"
+FROM bronze.erp_px_cat_g1v2
+ORDER BY "SUBCAT" NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 9.4 REVIEW DISTINCT MAINTENANCE VALUES
+-- ----------------------------------------------------------------------------
+SELECT DISTINCT "MAINTENANCE"
+FROM bronze.erp_px_cat_g1v2
+ORDER BY "MAINTENANCE" NULLS FIRST;
+
+-- ----------------------------------------------------------------------------
+-- 9.5 CHECK FOR UNWANTED SPACES IN CATEGORY TEXT FIELDS
+-- ----------------------------------------------------------------------------
+-- EXPECTATION: No Results
+SELECT *
+FROM bronze.erp_px_cat_g1v2
+WHERE (
+        "CAT" IS NOT NULL
+        AND "CAT" <> TRIM("CAT")
+    )
+    OR (
+        "SUBCAT" IS NOT NULL
+        AND "SUBCAT" <> TRIM("SUBCAT")
+    )
+    OR (
+        "MAINTENANCE" IS NOT NULL
+        AND "MAINTENANCE" <> TRIM("MAINTENANCE")
+    );
+
+/*
+ ================================================================================
+ END OF BRONZE QUALITY CHECKS
+ ================================================================================
+ 
+ NEXT STEPS
+ ----------
+ 1. Run the checks and review unexpected results.
+ 2. Record confirmed findings and distinguish source issues from loading issues.
+ 3. Preserve the Bronze data as loaded.
+ 4. Define the relevant cleaning, standardization, and validation rules in Silver.
+ 5. Re-run equivalent checks against Silver after transformations.
+ 
+ REMINDER:
+ A query returning rows does not automatically mean the data is wrong. Interpret
+ the results using source-system conventions and business requirements.
+ ================================================================================
+ */
