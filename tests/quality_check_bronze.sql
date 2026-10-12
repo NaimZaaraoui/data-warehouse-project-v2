@@ -313,8 +313,9 @@ ORDER BY cst_id NULLS FIRST;
 SELECT *
 FROM bronze.crm_cust_info
 WHERE cst_id IS NULL
-    OR cst_id IN (29473, 29449, 29433)
-ORDER BY cst_id NULLS FIRST;
+    OR cst_id IN (29466, 29473, 29449, 29433)
+ORDER BY cst_id NULLS FIRST,
+    cst_create_date DESC;
 
 -- ----------------------------------------------------------------------------
 -- 4.3 CHECK FOR UNWANTED SPACES IN CUSTOMER TEXT FIELDS
@@ -447,6 +448,9 @@ WHERE prd_start_dt IS NOT NULL
     AND prd_end_dt IS NOT NULL
     AND prd_end_dt < prd_start_dt;
 
+-- Each record should have a start date that is less than or equal to its end date.
+-- The end date may be NULL for active products, which is acceptable.
+-- The end date of one record and the start date of the next record for the same product should not overlap.
 -- ----------------------------------------------------------------------------
 -- 5.5 INVESTIGATE MISSING PRODUCT COSTS OR PRODUCT LINES
 -- ----------------------------------------------------------------------------
@@ -493,34 +497,23 @@ WHERE sls_ord_num IS NULL
     OR sls_price IS NULL;
 
 -- ----------------------------------------------------------------------------
--- 6.2 CHECK FOR NEGATIVE SALES, QUANTITIES, OR PRICES
+-- 6.2 CHECK DATES VALIDITY
 -- ----------------------------------------------------------------------------
--- INVESTIGATION QUERY:
--- Negative values may indicate data issues, but returns or adjustments may also
--- explain them. Confirm the business rules before classifying them as invalid.
-SELECT *
+-- EXPECTATION: No invalid dates
+SELECT NULLIF(sls_due_dt, 0)
 FROM bronze.crm_sales_details
-WHERE sls_sales < 0
-    OR sls_quantity < 0
-    OR sls_price < 0;
+WHERE sls_due_dt <= 0
+    OR LENGTH(CAST(sls_due_dt AS TEXT)) != 8
+    OR sls_due_dt > 20500101
+    OR sls_due_dt < 19000101;
 
 -- ----------------------------------------------------------------------------
--- 6.3 CHECK FOR ZERO SALES, QUANTITIES, OR PRICES
--- ----------------------------------------------------------------------------
--- INVESTIGATION QUERY:
--- Zero values are not automatically invalid; inspect them in context.
-SELECT *
-FROM bronze.crm_sales_details
-WHERE sls_sales = 0
-    OR sls_quantity = 0
-    OR sls_price = 0;
-
--- ----------------------------------------------------------------------------
--- 6.4 CHECK SALES DATE CHRONOLOGY
+-- 6.3 CHECK SALES DATE CHRONOLOGY
 -- ----------------------------------------------------------------------------
 -- EXPECTATION: No unexpected date ordering.
 -- Assumes the date columns use comparable date-compatible types.
 -- Confirm the source's date rules before treating every result as invalid.
+-- Order date must always be earlier than the shipping date or due date
 SELECT *
 FROM bronze.crm_sales_details
 WHERE (
@@ -533,6 +526,24 @@ WHERE (
         AND sls_due_dt IS NOT NULL
         AND sls_due_dt < sls_order_dt
     );
+
+-- ----------------------------------------------------------------------------
+-- 6.4 CHECK FOR NEGATIVE, ZERO, OR NULL SALES, QUANTITIES OR PRICES
+-- ----------------------------------------------------------------------------
+-- INVESTIGATION QUERY:
+-- Negative values may indicate data issues, but returns or adjustments may also
+-- explain them. Confirm the business rules before classifying them as invalid.
+SELECT sls_sales,
+    sls_quantity,
+    sls_price
+FROM bronze.crm_sales_details
+WHERE sls_sales IS NULL
+    OR sls_quantity IS NULL
+    OR sls_price IS NULL
+    OR sls_sales <= 0
+    OR sls_quantity <= 0
+    OR sls_price <= 0
+ORDER BY sls_sales NULLS FIRST;
 
 -- ----------------------------------------------------------------------------
 -- 6.5 CHECK WHETHER SALES EQUAL QUANTITY MULTIPLIED BY PRICE
@@ -570,23 +581,6 @@ WHERE s.sls_cust_id IS NOT NULL
 GROUP BY s.sls_cust_id
 ORDER BY s.sls_cust_id;
 
--- ----------------------------------------------------------------------------
--- 6.7 CHECK FOR SALES WITH NO MATCHING CRM PRODUCT KEY
--- ----------------------------------------------------------------------------
--- EXPECTATION: No Results, if product keys are expected to match across tables.
--- Confirm the source key conventions before interpreting unmatched values.
-SELECT s.sls_prd_key,
-    COUNT(*) AS sales_rows
-FROM bronze.crm_sales_details AS s
-WHERE s.sls_prd_key IS NOT NULL
-    AND NOT EXISTS (
-        SELECT 1
-        FROM bronze.crm_prd_info AS p
-        WHERE p.prd_key = s.sls_prd_key
-    )
-GROUP BY s.sls_prd_key
-ORDER BY s.sls_prd_key;
-
 /*
  ================================================================================
  7. ERP CUSTOMER DEMOGRAPHICS INTEGRITY
@@ -602,37 +596,38 @@ ORDER BY s.sls_prd_key;
 -- 7.1 CHECK FOR NULL OR DUPLICATE ERP CUSTOMER IDS
 -- ----------------------------------------------------------------------------
 -- EXPECTATION: No Results, if CID is expected to be unique in this source.
-SELECT "CID",
+SELECT CID,
     COUNT(*) AS row_count
 FROM bronze.erp_cust_az12
-GROUP BY "CID"
-HAVING "CID" IS NULL
+GROUP BY CID
+HAVING CID IS NULL
     OR COUNT(*) > 1
-ORDER BY "CID" NULLS FIRST;
+ORDER BY CID NULLS FIRST;
 
 -- ----------------------------------------------------------------------------
 -- 7.2 REVIEW DISTINCT ERP GENDER VALUES
 -- ----------------------------------------------------------------------------
-SELECT DISTINCT "GEN"
+SELECT DISTINCT GEN
 FROM bronze.erp_cust_az12
-ORDER BY "GEN" NULLS FIRST;
+ORDER BY GEN NULLS FIRST;
 
 -- ----------------------------------------------------------------------------
 -- 7.3 INVESTIGATE MISSING ERP GENDER VALUES
 -- ----------------------------------------------------------------------------
 SELECT *
 FROM bronze.erp_cust_az12
-WHERE "GEN" IS NULL;
+WHERE GEN IS NULL;
 
 -- ----------------------------------------------------------------------------
--- 7.4 CHECK FOR FUTURE BIRTH DATES
+-- 7.4 CHECK FOR VERY OLD OR FUTURE BIRTH DATES
 -- ----------------------------------------------------------------------------
 -- INVESTIGATION QUERY:
 -- Uses the database's current date.
 -- Review any results and confirm the expected date rules before acting.
 SELECT *
 FROM bronze.erp_cust_az12
-WHERE "BDATE" > CURRENT_DATE;
+WHERE BDATE > CURRENT_DATE
+    OR BDATE < '1924-01-01';
 
 /*
  ================================================================================
@@ -645,44 +640,47 @@ WHERE "BDATE" > CURRENT_DATE;
  PURPOSE:
  Inspect customer identifier uniqueness, country values, and missing countries.
  */
+SELECT *
+FROM bronze.erp_loc_a101;
+
 -- ----------------------------------------------------------------------------
 -- 8.1 CHECK FOR NULL OR DUPLICATE ERP LOCATION CUSTOMER IDS
 -- ----------------------------------------------------------------------------
 -- EXPECTATION: No Results, if each customer should have one location record.
-SELECT "CID",
+SELECT CID,
     COUNT(*) AS row_count
 FROM bronze.erp_loc_a101
-GROUP BY "CID"
-HAVING "CID" IS NULL
+GROUP BY CID
+HAVING CID IS NULL
     OR COUNT(*) > 1
-ORDER BY "CID" NULLS FIRST;
+ORDER BY CID NULLS FIRST;
 
 -- ----------------------------------------------------------------------------
 -- 8.2 REVIEW DISTINCT COUNTRY VALUES
 -- ----------------------------------------------------------------------------
 -- EXPECTATION: Country values should follow consistent source conventions.
 -- Review abbreviations, spelling, whitespace, and NULL values.
-SELECT DISTINCT "CNTRY"
+SELECT DISTINCT CNTRY
 FROM bronze.erp_loc_a101
-ORDER BY "CNTRY" NULLS FIRST;
+ORDER BY CNTRY NULLS FIRST;
 
 -- ----------------------------------------------------------------------------
 -- 8.3 INVESTIGATE MISSING COUNTRY VALUES
 -- ----------------------------------------------------------------------------
 SELECT *
 FROM bronze.erp_loc_a101
-WHERE "CNTRY" IS NULL;
+WHERE CNTRY IS NULL;
 
 -- ----------------------------------------------------------------------------
 -- 8.4 CHECK FOR UNWANTED SPACES IN COUNTRY VALUES
 -- ----------------------------------------------------------------------------
 -- EXPECTATION: No Results
-SELECT "CNTRY",
-    LENGTH("CNTRY") AS original_length,
-    LENGTH(TRIM("CNTRY")) AS trimmed_length
+SELECT CNTRY,
+    LENGTH(CNTRY) AS original_length,
+    LENGTH(TRIM(CNTRY)) AS trimmed_length
 FROM bronze.erp_loc_a101
-WHERE "CNTRY" IS NOT NULL
-    AND "CNTRY" <> TRIM("CNTRY");
+WHERE CNTRY IS NOT NULL
+    AND CNTRY <> TRIM(CNTRY);
 
 /*
  ================================================================================
@@ -699,34 +697,41 @@ WHERE "CNTRY" IS NOT NULL
 -- 9.1 CHECK FOR NULL OR DUPLICATE CATEGORY PRODUCT IDS
 -- ----------------------------------------------------------------------------
 -- EXPECTATION: No Results, if ID is expected to uniquely identify a record.
-SELECT "ID",
+SELECT *
+FROM silver.crm_prd_info
+WHERE prd_cat_id NOT IN (
+        SELECT DISTINCT id
+        FROM bronze.erp_px_cat_g1v2
+    );
+
+SELECT id,
     COUNT(*) AS row_count
 FROM bronze.erp_px_cat_g1v2
-GROUP BY "ID"
-HAVING "ID" IS NULL
+GROUP BY id
+HAVING id IS NULL
     OR COUNT(*) > 1
-ORDER BY "ID" NULLS FIRST;
+ORDER BY id NULLS FIRST;
 
 -- ----------------------------------------------------------------------------
 -- 9.2 REVIEW DISTINCT CATEGORY VALUES
 -- ----------------------------------------------------------------------------
-SELECT DISTINCT "CAT"
+SELECT DISTINCT cat
 FROM bronze.erp_px_cat_g1v2
-ORDER BY "CAT" NULLS FIRST;
+ORDER BY cat NULLS FIRST;
 
 -- ----------------------------------------------------------------------------
 -- 9.3 REVIEW DISTINCT SUBCATEGORY VALUES
 -- ----------------------------------------------------------------------------
-SELECT DISTINCT "SUBCAT"
+SELECT DISTINCT subcat
 FROM bronze.erp_px_cat_g1v2
-ORDER BY "SUBCAT" NULLS FIRST;
+ORDER BY subcat NULLS FIRST;
 
 -- ----------------------------------------------------------------------------
 -- 9.4 REVIEW DISTINCT MAINTENANCE VALUES
 -- ----------------------------------------------------------------------------
-SELECT DISTINCT "MAINTENANCE"
+SELECT DISTINCT maintenance
 FROM bronze.erp_px_cat_g1v2
-ORDER BY "MAINTENANCE" NULLS FIRST;
+ORDER BY maintenance NULLS FIRST;
 
 -- ----------------------------------------------------------------------------
 -- 9.5 CHECK FOR UNWANTED SPACES IN CATEGORY TEXT FIELDS
@@ -735,16 +740,16 @@ ORDER BY "MAINTENANCE" NULLS FIRST;
 SELECT *
 FROM bronze.erp_px_cat_g1v2
 WHERE (
-        "CAT" IS NOT NULL
-        AND "CAT" <> TRIM("CAT")
+        cat IS NOT NULL
+        AND cat <> TRIM(cat)
     )
     OR (
-        "SUBCAT" IS NOT NULL
-        AND "SUBCAT" <> TRIM("SUBCAT")
+        subcat IS NOT NULL
+        AND subcat <> TRIM(subcat)
     )
     OR (
-        "MAINTENANCE" IS NOT NULL
-        AND "MAINTENANCE" <> TRIM("MAINTENANCE")
+        maintenance IS NOT NULL
+        AND maintenance <> TRIM(maintenance)
     );
 
 /*
