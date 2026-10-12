@@ -82,8 +82,8 @@
             <mxPoint x="177" y="364" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="hheUwLVp_VdANX7qO9V1-55" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=20;fontStyle=1" value="Data Flow Diagram" vertex="1">
-          <mxGeometry height="30" width="204" x="40" y="30" as="geometry" />
+        <mxCell id="hheUwLVp_VdANX7qO9V1-55" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=20;fontStyle=1" value="Data Flow Diagram &lt;span style=&quot;font-weight: normal;&quot;&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;(Data Lineage)&lt;/font&gt;&lt;/span&gt;" vertex="1">
+          <mxGeometry height="30" width="311" x="40" y="30" as="geometry" />
         </mxCell>
         <mxCell id="hheUwLVp_VdANX7qO9V1-56" edge="1" parent="1" style="edgeStyle=elbowEdgeStyle;elbow=horizontal;endArrow=classic;html=1;curved=0;rounded=0;endSize=8;startSize=8;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="hheUwLVp_VdANX7qO9V1-20" value="">
           <mxGeometry height="50" relative="1" width="50" as="geometry">
