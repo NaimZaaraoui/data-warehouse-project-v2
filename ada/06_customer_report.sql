@@ -62,6 +62,9 @@ WITH base_query AS (
             customer_name,
             age
 )
+    /*--------------------------------------------------------------------
+    3) Final Query: Combines all cutsomer results into one output
+    -----------------------------------------------------------------------*/
 SELECT customer_key,
     customer_number,
     customer_name,
